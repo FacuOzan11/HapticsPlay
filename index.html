@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>Haptics</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #000; --surface: rgba(255,255,255,0.055);
+      --border: rgba(255,255,255,0.09); --fg: #fff;
+      --muted: rgba(255,255,255,0.32); --r: 16px;
+    }
+
+    html { background: var(--bg); }
+
+    body {
+      background: var(--bg); color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100dvh;
+      padding: max(env(safe-area-inset-top), 52px) 0 max(env(safe-area-inset-bottom), 80px);
+      max-width: 430px; margin: 0 auto;
+    }
+
+    /* ── Header ── */
+    header { padding: 0 20px; margin-bottom: 28px; }
+
+    h1 { font-size: 44px; font-weight: 700; letter-spacing: -2px; line-height: 1; }
+
+    .subtitle {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 8px;
+    }
+
+    .subtitle-left {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 13px; color: var(--muted);
+    }
+
+    .live {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #30d158; flex-shrink: 0;
+      animation: blink 2.5s ease-in-out infinite;
+    }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+    .mute-btn {
+      background: none; border: none; color: var(--muted);
+      cursor: pointer; padding: 4px; border-radius: 6px;
+      display: flex; align-items: center;
+      transition: color .2s; -webkit-tap-highlight-color: transparent;
+    }
+    .mute-btn:hover { color: rgba(255,255,255,.6); }
+    .mute-btn.muted { color: rgba(255,255,255,.18); }
+
+    /* ── Tabs ── */
+    .tabs-wrap {
+      position: sticky; top: 0; z-index: 10;
+      background: linear-gradient(var(--bg) 80%, transparent);
+      padding-bottom: 16px;
+    }
+
+    .tabs-wrap::after {
+      content: '';
+      position: absolute; right: 0; top: 0; bottom: 16px;
+      width: 48px;
+      background: linear-gradient(to right, transparent, #000 85%);
+      pointer-events: none; z-index: 2;
+    }
+
+    .tabs {
+      display: flex; gap: 6px;
+      overflow-x: auto; scrollbar-width: none;
+      padding: 0 20px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+
+    .tab {
+      flex-shrink: 0;
+      padding: 7px 14px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      font-size: 13px; font-weight: 500;
+      color: var(--muted); background: none;
+      cursor: pointer;
+      transition: color .18s, background .18s, border-color .18s;
+      -webkit-tap-highlight-color: transparent;
+      font-family: inherit;
+    }
+    .tab:hover { color: rgba(255,255,255,.6); }
+    .tab.active { color: #000; background: #fff; border-color: #fff; }
+
+    /* ── Grid ── */
+    #grid {
+      padding: 0 20px;
+      transition: opacity .15s ease;
+    }
+    #grid.fading { opacity: 0; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .grid-1 { display: flex; flex-direction: column; gap: 8px; }
+
+    .section-label {
+      font-size: 10.5px; font-weight: 600;
+      letter-spacing: .1em; text-transform: uppercase;
+      color: var(--muted); margin: 24px 0 10px 2px;
+    }
+    .section-label:first-child { margin-top: 0; }
+
+    /* ── Pattern button ── */
+    .hbtn {
+      position: relative; display: flex; flex-direction: column;
+      padding: 15px 16px 17px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r); color: var(--fg); font-family: inherit;
+      cursor: pointer; text-align: left; overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none; -webkit-user-select: none;
+      transition: border-color .3s ease, transform .1s ease;
+    }
+    .hbtn::after {
+      content: ''; position: absolute; inset: 0;
+      background: var(--accent, #fff); opacity: 0;
+      pointer-events: none; transition: opacity .35s ease;
+    }
+    .hbtn.fired::after { opacity: .13; transition: none; }
+    .hbtn.fired        { border-color: color-mix(in srgb, var(--accent,#fff) 45%, transparent); }
+    .hbtn:active       { transform: scale(.975); }
+
+    .hbtn-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent, #fff); margin-bottom: 10px; flex-shrink: 0;
+    }
+    .hbtn-name { font-size: 14px; font-weight: 500; line-height: 1; position: relative; }
+    .hbtn-desc {
+      font-size: 11px; color: var(--muted);
+      margin-top: 3px; line-height: 1.4; position: relative;
+    }
+
+    /* full-width variant */
+    .hbtn.full { flex-direction: row; align-items: center; gap: 14px; padding: 16px 18px; }
+    .hbtn.full .hbtn-dot { margin-bottom: 0; flex-shrink: 0; }
+    .hbtn.full .hbtn-text { display: flex; flex-direction: column; }
+    .hbtn.full .hbtn-name { font-size: 15px; }
+
+    /* ── Slider card ── */
+    .slider-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 16px 18px 22px; margin-bottom: 8px;
+    }
+    .slider-top {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 18px;
+    }
+    .slider-dot { width: 6px; height: 6px; border-radius: 50%; background: #e5e5ea; margin-bottom: 10px; }
+    .slider-name { font-size: 14px; font-weight: 500; }
+    .slider-hint { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .slider-num {
+      font-size: 26px; font-weight: 600; letter-spacing: -1px;
+      font-variant-numeric: tabular-nums; line-height: 1;
+    }
+    input[type="range"] {
+      -webkit-appearance: none; appearance: none; width: 100%; height: 3px;
+      border-radius: 2px; outline: none; cursor: pointer;
+      background: linear-gradient(to right,
+        rgba(255,255,255,.5) 0%, rgba(255,255,255,.5) var(--pct,44.4%),
+        rgba(255,255,255,.12) var(--pct,44.4%), rgba(255,255,255,.12) 100%);
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 24px; height: 24px; border-radius: 50%;
+      background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.55);
+      cursor: grab; transition: transform .1s ease;
+    }
+    input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.08); cursor: grabbing; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: max(env(safe-area-inset-bottom), 30px);
+      left: 50%; transform: translateX(-50%) translateY(6px);
+      display: flex; align-items: center; gap: 6px;
+      padding: 9px 16px 9px 12px;
+      background: rgba(22,22,22,.92);
+      backdrop-filter: blur(28px) saturate(180%);
+      -webkit-backdrop-filter: blur(28px) saturate(180%);
+      border: 1px solid rgba(255,255,255,.09); border-radius: 100px;
+      font-size: 13px; font-weight: 500; white-space: nowrap;
+      pointer-events: none; z-index: 100; opacity: 0;
+      transition: opacity .18s ease, transform .18s ease;
+    }
+    #toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--t-color,#fff); flex-shrink: 0; }
+    .toast-muted { color: var(--muted); }
+    .toast-name  { color: var(--t-color,#fff); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Haptics</h1>
+    <div class="subtitle">
+      <div class="subtitle-left">
+        <span class="live"></span>
+        <span>web vibration api · tap to feel</span>
+      </div>
+      <button class="mute-btn" id="mute-btn" aria-label="Toggle sound">
+        <svg id="icon-on" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/>
+        </svg>
+        <svg id="icon-off" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="tabs-wrap">
+    <div class="tabs" id="tabs"></div>
+  </div>
+
+  <div id="grid"></div>
+
+  <div id="toast">
+    <div class="toast-dot"></div>
+    <span class="toast-muted">haptic&nbsp;·&nbsp;</span>
+    <span class="toast-name" id="tname"></span>
+  </div>
+
+  <script type="module">
+    import { WebHaptics } from 'https://esm.sh/web-haptics';
+    import { Howl } from 'https://esm.sh/howler@2.2.4';
+
+    /* ── WAV encoder ── */
+    function encodeWAV(s, sr) {
+      const b = new ArrayBuffer(44 + s.length * 2), v = new DataView(b);
+      const ws = (o, t) => [...t].forEach((c,i) => v.setUint8(o+i, c.charCodeAt(0)));
+      ws(0,'RIFF'); v.setUint32(4, 36+s.length*2, true); ws(8,'WAVE'); ws(12,'fmt ');
+      v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+      v.setUint32(24,sr,true); v.setUint32(28,sr*2,true);
+      v.setUint16(32,2,true); v.setUint16(34,16,true); ws(36,'data');
+      v.setUint32(40,s.length*2,true);
+      for (let i=0;i<s.length;i++){
+        const x=Math.max(-1,Math.min(1,s[i]));
+        v.setInt16(44+i*2,(x<0?x*0x8000:x*0x7FFF)|0,true);
+      }
+      return b;
+    }
+
+    const SR = 44100;
+
+    async function makeHowl(dur, fn) {
+      const ctx = new OfflineAudioContext(1, Math.ceil(SR*dur), SR);
+      fn(ctx);
+      const buf = await ctx.startRendering();
+      const url = URL.createObjectURL(new Blob([encodeWAV(buf.getChannelData(0),SR)],{type:'audio/wav'}));
+      return new Promise(r => { const h=new Howl({src:[url],format:['wav'],onload:()=>r(h)}); });
+    }
+
+    /* note helper: oscillator with envelope */
+    function N(ctx, wave, hz, vol, t0, t1, hzEnd=null) {
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.type=wave; o.frequency.setValueAtTime(hz,0);
+      if(hzEnd) o.frequency.exponentialRampToValueAtTime(hzEnd,t1);
+      g.gain.setValueAtTime(0,0); g.gain.setValueAtTime(0,t0);
+      g.gain.linearRampToValueAtTime(vol, t0+.010);
+      g.gain.exponentialRampToValueAtTime(.0001,t1);
+      o.connect(g); g.connect(ctx.destination); o.start(0); o.stop(t1+.005);
+    }
+
+    /* ── Pattern definitions ── */
+    const H = new WebHaptics();
+
+    const vib = p => navigator.vibrate?.(p);
+
+    const PATTERNS = [
+      // NOTIFICATION
+      { id:'success',   cat:'notification', name:'Success',   accent:'#30d158', full:true,
+        desc:'Form saved, payment confirmed, upload complete',
+        hfn: ()=>H.trigger('success'),
+        snd: [.40, c=>{ N(c,'sine',523,.22,0,.18); N(c,'sine',784,.22,.12,.36); }] },
+      { id:'warning',   cat:'notification', name:'Warning',   accent:'#ffd60a', full:true,
+        desc:'Destructive action ahead, approaching a limit',
+        hfn: ()=>H.trigger('warning'),
+        snd: [.30, c=>{ N(c,'triangle',330,.24,0,.12); N(c,'triangle',330,.24,.14,.27); }] },
+      { id:'error',     cat:'notification', name:'Error',     accent:'#ff453a', full:true,
+        desc:'Validation failure, network error, denied',
+        hfn: ()=>H.trigger('error'),
+        snd: [.28, c=>N(c,'sawtooth',200,.26,0,.25,80)] },
+
+      // IMPACT
+      { id:'light',  cat:'impact', name:'Light',  accent:'#64d2ff',
+        desc:'Toggle, subtle tap',
+        hfn: ()=>H.trigger('light'),
+        snd: [.07, c=>N(c,'sine',3000,.16,0,.06)] },
+      { id:'medium', cat:'impact', name:'Medium', accent:'#0a84ff',
+        desc:'Button press, card snap',
+        hfn: ()=>H.trigger('medium'),
+        snd: [.11, c=>N(c,'sine',1200,.26,0,.09)] },
+      { id:'heavy',  cat:'impact', name:'Heavy',  accent:'#bf5af2',
+        desc:'Major state, force press',
+        hfn: ()=>H.trigger('heavy'),
+        snd: [.22, c=>N(c,'sine',100,.44,0,.20,38)] },
+      { id:'soft',   cat:'impact', name:'Soft',   accent:'#ffd60a',
+        desc:'Feather light touch',
+        hfn: ()=>H.trigger('soft'),
+        snd: [.14, c=>N(c,'sine',700,.13,0,.12)] },
+      { id:'rigid',  cat:'impact', name:'Rigid',  accent:'#ff9f0a',
+        desc:'Sharp, rigid impact',
+        hfn: ()=>H.trigger('rigid'),
+        snd: [.08, c=>N(c,'triangle',2400,.30,0,.07)] },
+
+      // SELECTION
+      { id:'selection', cat:'selection', name:'Selection', accent:'#e5e5ea',
+        desc:'Picker, stepper, detent',
+        hfn: ()=>H.trigger('selection'),
+        snd: [.04, c=>N(c,'sine',4500,.12,0,.032)] },
+      { id:'nudge', cat:'selection', name:'Nudge', accent:'#32ade6',
+        desc:'Gentle direction hint',
+        hfn: ()=>H.trigger('nudge'),
+        snd: [.12, c=>N(c,'sine',200,.26,0,.10)] },
+
+      // PATTERNS
+      { id:'heartbeat', cat:'pattern', name:'Heartbeat', accent:'#ff375f',
+        desc:'Two-beat rhythm',
+        hfn: ()=>vib([30,120,30]),
+        snd: [.35, c=>{ N(c,'sine',70,.40,0,.08,40); N(c,'sine',70,.40,.18,.26,40); }] },
+      { id:'double', cat:'pattern', name:'Double', accent:'#0a84ff',
+        desc:'Two equal pulses',
+        hfn: ()=>vib([80,100,80]),
+        snd: [.28, c=>{ N(c,'sine',1200,.26,0,.08); N(c,'sine',1200,.26,.15,.23); }] },
+      { id:'triple', cat:'pattern', name:'Triple', accent:'#5ac8fa',
+        desc:'Three quick taps',
+        hfn: ()=>vib([50,70,50,70,50]),
+        snd: [.30, c=>{ [0,.11,.22].forEach(t=>N(c,'sine',1200,.24,t,t+.07)); }] },
+      { id:'burst',  cat:'pattern', name:'Burst',  accent:'#ff9f0a',
+        desc:'Rapid fire micro pulses',
+        hfn: ()=>vib([12,18,12,18,12,18,12,18,12]),
+        snd: [.15, c=>{ [0,.022,.044,.066,.088,.11].forEach(t=>N(c,'sine',4000,.10,t,t+.014)); }] },
+      { id:'long',   cat:'pattern', name:'Long',   accent:'#bf5af2',
+        desc:'Sustained 400ms pulse',
+        hfn: ()=>vib([400]),
+        snd: [.42, c=>N(c,'sine',80,.28,0,.40)] },
+      { id:'knock',  cat:'pattern', name:'Knock',  accent:'#8e8e93',
+        desc:'Three knocks on a door',
+        hfn: ()=>vib([60,80,60,80,60]),
+        snd: [.36, c=>{ [0,.13,.26].forEach(t=>N(c,'sine',300,.30,t,t+.08,180)); }] },
+      { id:'alert',  cat:'pattern', name:'Alert',  accent:'#ff453a',
+        desc:'Urgent attention signal',
+        hfn: ()=>vib([100,50,100,50,200]),
+        snd: [.40, c=>{ N(c,'triangle',400,.26,0,.12); N(c,'triangle',400,.26,.17,.28); N(c,'triangle',500,.30,.33,.40); }] },
+      { id:'ping',   cat:'pattern', name:'Ping',   accent:'#64d2ff',
+        desc:'Single short signal',
+        hfn: ()=>vib([15]),
+        snd: [.06, c=>N(c,'sine',3500,.18,0,.055)] },
+      { id:'sos',    cat:'pattern', name:'SOS',    accent:'#ff453a',
+        desc:'Morse code distress',
+        hfn: ()=>vib([50,50,50,50,50,150,150,100,150,100,150,150,50,50,50,50,50,50]),
+        snd: [1.0, c=>{
+          [0,.09,.18].forEach(t=>N(c,'sine',800,.15,t,t+.06));       // ...
+          [.33,.48,.63].forEach(t=>N(c,'sine',800,.15,t,t+.12));     // ---
+          [.82,.91,1.0].forEach(t=>N(c,'sine',800,.15,t,t+.06));     // ...
+        }] },
+      { id:'drumroll', cat:'pattern', name:'Drumroll', accent:'#ff9f0a',
+        desc:'Escalating to a finale',
+        hfn: ()=>vib([20,28,16,22,12,18,8,14,60,80,200]),
+        snd: [.40, c=>{
+          [0,.055,.105,.148,.185,.217,.244].forEach((t,i)=>N(c,'sine',1400,.10+i*.04,t,t+.040));
+          N(c,'sine',100,.44,.30,.40,40);
+        }] },
+      { id:'wave',     cat:'pattern', name:'Wave',     accent:'#30d158',
+        desc:'Rising frequency sweep',
+        hfn: ()=>vib([30,40,60,30,90,20,120]),
+        snd: [.32, c=>N(c,'sine',150,.28,0,.30,1200)] },
+      { id:'stutter',  cat:'pattern', name:'Stutter',  accent:'#64d2ff',
+        desc:'Micro-stutter flutter',
+        hfn: ()=>vib([8,10,8,10,8,10,8,10,40]),
+        snd: [.12, c=>{ [0,.018,.036,.054,.072].forEach(t=>N(c,'sine',3800,.10,t,t+.012)); }] },
+      { id:'countdown', cat:'pattern', name:'Countdown', accent:'#ffd60a',
+        desc:'Three descending beats',
+        hfn: ()=>vib([80,200,80,200,200]),
+        snd: [.55, c=>{ N(c,'sine',600,.24,0,.10); N(c,'sine',450,.24,.20,.30); N(c,'sine',300,.30,.40,.55); }] },
+      { id:'buzz',      cat:'pattern', name:'Buzz',      accent:'#ff375f',
+        desc:'Three rapid pulses',
+        hfn: ()=>H.trigger('buzz'),
+        snd: [.22, c=>{ [0,.07,.14].forEach(t=>N(c,'square',85,.17,t,t+.05)); }] },
+
+      // EXTRA
+      { id:'tick',     cat:'extra', name:'Tick',     accent:'#e5e5ea',
+        desc:'10ms minimal tick',
+        hfn: ()=>vib([10]),
+        snd: [.03, c=>N(c,'sine',5000,.10,0,.025)] },
+      { id:'thud',     cat:'extra', name:'Thud',     accent:'#bf5af2',
+        desc:'300ms deep rumble',
+        hfn: ()=>vib([300]),
+        snd: [.32, c=>N(c,'sine',55,.42,0,.30,35)] },
+      { id:'zap',      cat:'extra', name:'Zap',      accent:'#ffd60a',
+        desc:'Electric shock sweep',
+        hfn: ()=>vib([20,10,40,10,20]),
+        snd: [.14, c=>N(c,'sawtooth',1200,.28,0,.12,80)] },
+      { id:'confirm',  cat:'extra', name:'Confirm',  accent:'#30d158',
+        desc:'Soft two-note affirmation',
+        hfn: ()=>vib([30,50,60]),
+        snd: [.30, c=>{ N(c,'sine',440,.20,0,.14); N(c,'sine',528,.22,.12,.28); }] },
+      { id:'denied',   cat:'extra', name:'Denied',   accent:'#ff453a',
+        desc:'Descending rejection',
+        hfn: ()=>vib([200,100,200]),
+        snd: [.32, c=>{ N(c,'triangle',330,.22,0,.14); N(c,'triangle',220,.22,.14,.30); }] },
+      { id:'pulse',    cat:'extra', name:'Pulse',    accent:'#ff375f',
+        desc:'Slow deep heartbeat',
+        hfn: ()=>vib([100,800,100]),
+        snd: [1.1, c=>{ N(c,'sine',60,.38,0,.12,40); N(c,'sine',60,.38,.90,1.02,40); }] },
+      { id:'glitch',   cat:'extra', name:'Glitch',   accent:'#ff375f',
+        desc:'Irregular micro chaos',
+        hfn: ()=>vib([5,8,15,6,10,4,20,8,5]),
+        snd: [.14, c=>{ [[0,2400],[.022,1800],[.04,3200],[.062,900],[.082,4000],[.10,1500]].forEach(([t,f])=>N(c,'sawtooth',f,.08,t,t+.014)); }] },
+      { id:'tada',     cat:'extra', name:'Tada!',    accent:'#30d158',
+        desc:'Celebration fanfare',
+        hfn: ()=>vib([50,30,30,30,50,30,80,30,200]),
+        snd: [.60, c=>{ [[0,523],[.10,659],[.20,784],[.32,1047]].forEach(([t,f])=>N(c,'sine',f,.22,t,t+.14)); }] },
+    ];
+
+    /* ── Tab config ── */
+    const TABS = [
+      { id:'all',          label:'All' },
+      { id:'notification', label:'Notification' },
+      { id:'impact',       label:'Impact' },
+      { id:'selection',    label:'Selection' },
+      { id:'pattern',      label:'Patterns' },
+      { id:'extra',        label:'Extra' },
+    ];
+
+    const CAT_LABELS = {
+      notification:'Notification', impact:'Impact',
+      selection:'Selection', pattern:'Patterns', extra:'Extra',
+    };
+
+    /* ── Generate all sounds ── */
+    await Promise.all(PATTERNS.map(async p => {
+      p.sound = await makeHowl(...p.snd);
+    }));
+
+    /* ── State ── */
+    let muted = false, activeTab = 'all';
+
+    const muteBtn = document.getElementById('mute-btn');
+    muteBtn.addEventListener('click', () => {
+      muted = !muted;
+      muteBtn.classList.toggle('muted', muted);
+      document.getElementById('icon-on').style.display  = muted ? 'none' : '';
+      document.getElementById('icon-off').style.display = muted ? ''     : 'none';
+    });
+
+    /* ── Toast ── */
+    const toast    = document.getElementById('toast');
+    const toastDot = toast.querySelector('.toast-dot');
+    const tname    = document.getElementById('tname');
+    let toastTimer;
+
+    function pop(name, accent) {
+      tname.textContent = name;
+      toastDot.style.background = accent;
+      toast.style.setProperty('--t-color', accent);
+      toast.classList.add('on');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('on'), 1400);
+    }
+
+    /* ── Fire ── */
+    function fire(btn, p) {
+      p.hfn();
+      if (!muted && p.sound) p.sound.play();
+      pop(p.name, p.accent);
+      btn.classList.add('fired');
+      btn.style.setProperty('--accent', p.accent);
+      setTimeout(() => btn.classList.remove('fired'), 300);
+    }
+
+    /* ── Render ── */
+    const grid = document.getElementById('grid');
+
+    function makeBtn(p, full=false) {
+      const btn = document.createElement('button');
+      btn.className = 'hbtn' + (full ? ' full' : '');
+      btn.style.setProperty('--accent', p.accent);
+      if (full) {
+        btn.innerHTML = `
+          <div class="hbtn-dot"></div>
+          <div class="hbtn-text">
+            <span class="hbtn-name">${p.name}</span>
+            ${p.desc ? `<span class="hbtn-desc">${p.desc}</span>` : ''}
+          </div>`;
+      } else {
+        btn.innerHTML = `
+          <div class="hbtn-dot"></div>
+          <span class="hbtn-name">${p.name}</span>
+          ${p.desc ? `<span class="hbtn-desc">${p.desc}</span>` : ''}`;
+      }
+      btn.addEventListener('click', () => fire(btn, p));
+      return btn;
+    }
+
+    function makeSlider() {
+      const wrap = document.createElement('div');
+      wrap.className = 'slider-card';
+      wrap.innerHTML = `
+        <div class="slider-top">
+          <div><div class="slider-dot"></div>
+            <div class="slider-name">Selection slider</div>
+            <div class="slider-hint">Picker · stepper · detent</div></div>
+          <span class="slider-num" id="sval">5</span>
+        </div>
+        <input type="range" id="slider" min="1" max="10" value="5" step="1">`;
+
+      const selPat = PATTERNS.find(p => p.id === 'selection');
+      const slider = wrap.querySelector('#slider');
+      const sval   = wrap.querySelector('#sval');
+      let prev = 5;
+
+      function updateTrack() {
+        slider.style.setProperty('--pct', ((+slider.value-1)/9*100)+'%');
+      }
+      updateTrack();
+
+      slider.addEventListener('input', () => {
+        const cur = +slider.value;
+        sval.textContent = cur;
+        updateTrack();
+        if (cur !== prev) {
+          selPat.hfn();
+          if (!muted && selPat.sound) selPat.sound.play();
+          pop('selection', '#e5e5ea');
+          prev = cur;
+        }
+      });
+      return wrap;
+    }
+
+    function renderGrid(tab) {
+      grid.innerHTML = '';
+      const showSlider = tab === 'all' || tab === 'selection';
+
+      if (tab === 'all') {
+        // grouped by category with labels
+        const cats = [...new Set(PATTERNS.map(p => p.cat))];
+        cats.forEach(cat => {
+          const items = PATTERNS.filter(p => p.cat === cat);
+          const label = document.createElement('div');
+          label.className = 'section-label';
+          label.textContent = CAT_LABELS[cat];
+          grid.appendChild(label);
+
+          if (cat === 'notification') {
+            const col = document.createElement('div');
+            col.className = 'grid-1';
+            items.forEach(p => col.appendChild(makeBtn(p, true)));
+            grid.appendChild(col);
+          } else if (cat === 'selection') {
+            grid.appendChild(makeSlider());
+            const g2 = document.createElement('div');
+            g2.className = 'grid-2';
+            items.forEach(p => g2.appendChild(makeBtn(p)));
+            grid.appendChild(g2);
+          } else {
+            const g2 = document.createElement('div');
+            g2.className = 'grid-2';
+            items.forEach(p => g2.appendChild(makeBtn(p)));
+            grid.appendChild(g2);
+          }
+        });
+      } else {
+        const items = PATTERNS.filter(p => p.cat === tab);
+        if (tab === 'selection') grid.appendChild(makeSlider());
+        if (tab === 'notification') {
+          const col = document.createElement('div');
+          col.className = 'grid-1';
+          items.forEach(p => col.appendChild(makeBtn(p, true)));
+          grid.appendChild(col);
+        } else {
+          const g2 = document.createElement('div');
+          g2.className = 'grid-2';
+          items.forEach(p => g2.appendChild(makeBtn(p)));
+          grid.appendChild(g2);
+        }
+      }
+    }
+
+    /* ── Tabs ── */
+    const tabsEl = document.getElementById('tabs');
+
+    async function switchTab(id) {
+      if (id === activeTab) return;
+      activeTab = id;
+      tabsEl.querySelectorAll('.tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.tab === id));
+      grid.classList.add('fading');
+      await new Promise(r => setTimeout(r, 140));
+      renderGrid(id);
+      grid.classList.remove('fading');
+    }
+
+    TABS.forEach(t => {
+      const btn = document.createElement('button');
+      btn.className = 'tab' + (t.id === 'all' ? ' active' : '');
+      btn.dataset.tab = t.id;
+      btn.textContent = t.label;
+      btn.addEventListener('click', () => switchTab(t.id));
+      tabsEl.appendChild(btn);
+    });
+
+    renderGrid('all');
+  </script>
+</body>
+</html>
